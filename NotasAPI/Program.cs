@@ -12,6 +12,7 @@ builder.Services.AddOpenApiDocument(config =>
     config.Title = "NotasAPI v1";
     config.Version = "v1";
 });
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -25,44 +26,78 @@ if (app.Environment.IsDevelopment())
         config.DocExpansion = "list";
     });
 }
-app.MapGet("/notas", async (NotaDb db) =>
-    await db.Notas.ToListAsync());
 
-app.MapGet("/notas/{id}", async (int id, NotaDb db) =>
-    await db.Notas.FindAsync(id)
+var notas = app.MapGroup("/notas");
+
+notas.MapGet("/", GetAllNotas);
+notas.MapGet("/{id}", GetNota);
+notas.MapPost("/", CreateNota);
+notas.MapPut("/{id}", UpdateNota);
+notas.MapPatch("/{id}", PatchNota);
+notas.MapDelete("/{id}", DeleteNota);
+
+app.Run();
+
+static async Task<IResult> GetAllNotas(NotaDb db)
+{
+    return TypedResults.Ok(await db.Notas.ToArrayAsync());
+}
+
+static async Task<IResult> GetNota(int id, NotaDb db)
+{
+    return await db.Notas.FindAsync(id)
         is Nota nota
-            ? Results.Ok(nota)
-            : Results.NotFound());
+            ? TypedResults.Ok(nota)
+            : TypedResults.NotFound();
+}
 
-app.MapPost("/notas", async (Nota nota, NotaDb db) =>
+static async Task<IResult> CreateNota(Nota nota, NotaDb db)
 {
     db.Notas.Add(nota);
     await db.SaveChangesAsync();
-    return Results.Created($"/notas/{nota.Id}", nota);
-});
-app.MapPut("/notas/{id}", async (int id, Nota inputNota, NotaDb db) =>
+
+    return TypedResults.Created($"/notas/{nota.Id}", nota);
+}
+
+static async Task<IResult> UpdateNota(int id, Nota inputNota, NotaDb db)
 {
     var nota = await db.Notas.FindAsync(id);
 
-    if (nota is null) return Results.NotFound();
+    if (nota is null) return TypedResults.NotFound();
 
     nota.Titulo = inputNota.Titulo;
     nota.Contenido = inputNota.Contenido;
-    nota.EsFavorita = inputNota.EsFavorita;
 
     await db.SaveChangesAsync();
 
-    return Results.NoContent();
-});
-app.MapDelete("/notas/{id}", async (int id, NotaDb db) =>
+    return TypedResults.NoContent();
+}
+
+static async Task<IResult> PatchNota(int id, NotaPatchDto inputNota, NotaDb db)
+{
+    var nota = await db.Notas.FindAsync(id);
+
+    if (nota is null) return TypedResults.NotFound();
+
+    if (inputNota.Titulo != null)
+        nota.Titulo = inputNota.Titulo;
+
+    if (inputNota.Contenido != null)
+        nota.Contenido = inputNota.Contenido;
+
+    await db.SaveChangesAsync();
+
+    return TypedResults.NoContent();
+}
+
+static async Task<IResult> DeleteNota(int id, NotaDb db)
 {
     if (await db.Notas.FindAsync(id) is Nota nota)
     {
         db.Notas.Remove(nota);
         await db.SaveChangesAsync();
-        return Results.NoContent();
+        return TypedResults.NoContent();
     }
 
-    return Results.NotFound();
-});
-app.Run();
+    return TypedResults.NotFound();
+}
